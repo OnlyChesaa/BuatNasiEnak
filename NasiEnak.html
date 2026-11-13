@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalkulator &amp; Timer Nasi Pintar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  /* ===== 1. Token warna & ukuran (mudah diganti di satu tempat) ===== */
+  :root {
+    --bg: #e6eee8;
+    --card: #fbfdfb;
+    --ink: #16312a;
+    --muted: #5d7469;
+    --line: #cfdcd3;
+    --accent: #1f6b50;      /* hijau daun pandan */
+    --accent-ink: #ffffff;
+    --warn: #b3392b;
+    --grain: #e9b949;       /* kuning bulir beras */
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1c17; --card: #17271f; --ink: #e5f0e9; --muted: #9bb3a6;
+      --line: #2a4136; --accent: #5fc79c; --accent-ink: #0b1a13; --warn: #ff8b7a;
+    }
+  }
+
+  /* ===== 2. Dasar halaman ===== */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    line-height: 1.5; padding: 24px 16px 48px;
+  }
+  main { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: clamp(1.8rem, 5vw, 2.6rem); font-weight: 800; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+
+  /* Tata letak: 1 kolom di HP, 2 kolom di layar lebar */
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 800px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+
+  /* ===== 3. Form ===== */
+  fieldset { border: 0; padding: 0; margin: 0 0 18px; }
+  legend, label { font-weight: 600; font-size: 0.95rem; padding: 0; margin-bottom: 8px; display: block; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; }
+  .choices input { position: absolute; opacity: 0; }
+  .choices label {
+    margin: 0; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: 999px;
+    cursor: pointer; font-weight: 400; transition: background .15s, border-color .15s;
+  }
+  .choices input:checked + label { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .choices input:focus-visible + label { outline: 3px solid var(--grain); outline-offset: 2px; }
+  input[type="number"] {
+    width: 100%; font: inherit; padding: 11px 12px; color: var(--ink);
+    background: var(--bg); border: 1.5px solid var(--line); border-radius: 10px;
+  }
+  input[type="number"]:focus-visible { outline: 3px solid var(--grain); outline-offset: 1px; }
+  .error { color: var(--warn); font-size: 0.9rem; min-height: 1.3em; margin: 6px 0 0; }
+
+  button {
+    font: inherit; font-weight: 600; padding: 11px 18px; border-radius: 10px;
+    border: 1.5px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--grain); outline-offset: 2px; }
+  .full { width: 100%; }
+
+  /* ===== 4. Hasil perhitungan ===== */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--bg); border-radius: 12px; padding: 12px; }
+  .stat b { display: block; font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
+  .stat span { color: var(--muted); font-size: 0.85rem; }
+  ol.steps { padding-left: 20px; margin: 0; }
+  ol.steps li { margin-bottom: 6px; }
+  .empty { color: var(--muted); }
+
+  /* ===== 5. Timer (bagian yang paling menonjol) ===== */
+  .timer { text-align: center; }
+  .ring { position: relative; width: min(260px, 70vw); margin: 4px auto 16px; }
+  .ring svg { width: 100%; display: block; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 10; }
+  .ring .track { stroke: var(--line); }
+  .ring .bar { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .4s linear; }
+  .ring.done .bar { stroke: var(--grain); }
+  .time {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: clamp(2.2rem, 10vw, 3.2rem); font-weight: 800; font-variant-numeric: tabular-nums;
+  }
+  .controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .status { min-height: 1.5em; color: var(--muted); margin: 0 0 12px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kalkulator &amp; Timer Nasi Pintar</h1>
+  <p class="sub">Pilih cara memasak, hitung air dan waktunya, lalu mulai timer.</p>
+
+  <div class="grid">
+    <!-- ===== Kartu 1: Input ===== -->
+    <section class="card" aria-labelledby="judul-input">
+      <h2 id="judul-input">Atur masakan</h2>
+      <form id="form" novalidate>
+        <fieldset>
+          <legend>Cara memasak</legend>
+          <div class="choices">
+            <input type="radio" name="method" id="m1" value="cooker" checked><label for="m1">Rice cooker</label>
+            <input type="radio" name="method" id="m2" value="electric"><label for="m2">Panci listrik</label>
+            <input type="radio" name="method" id="m3" value="stove"><label for="m3">Panci kompor</label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Jenis beras</legend>
+          <div class="choices">
+            <input type="radio" name="rice" id="r1" value="white" checked><label for="r1">Beras putih</label>
+            <input type="radio" name="rice" id="r2" value="brown"><label for="r2">Beras merah</label>
+          </div>
+        </fieldset>
+        <div>
+          <label for="amount">Jumlah beras (cup, 1 cup = 180 ml)</label>
+          <input type="number" id="amount" value="2" step="0.5" inputmode="decimal" aria-describedby="err">
+          <p class="error" id="err" role="alert"></p>
+        </div>
+        <button type="submit" class="primary full">Hitung</button>
+      </form>
+    </section>
+
+    <!-- ===== Kartu 2: Hasil ===== -->
+    <section class="card" aria-labelledby="judul-hasil" aria-live="polite">
+      <h2 id="judul-hasil">Hasil perhitungan</h2>
+      <div id="result"><p class="empty">Isi data di samping, lalu tekan Hitung.</p></div>
+    </section>
+
+    <!-- ===== Kartu 3: Timer (melebar penuh di layar besar) ===== -->
+    <section class="card timer" style="grid-column: 1 / -1;" aria-labelledby="judul-timer">
+      <h2 id="judul-timer">Timer memasak</h2>
+      <div class="ring" id="ring">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="track" cx="60" cy="60" r="52"></circle>
+          <circle class="bar" id="bar" cx="60" cy="60" r="52"></circle>
+        </svg>
+        <div class="time" id="time" role="timer">00:00</div>
+      </div>
+      <p class="status" id="status">Hitung dulu untuk mengisi timer.</p>
+      <div class="controls">
+        <button class="primary" id="btnStart" disabled>Mulai</button>
+        <button id="btnPause" disabled>Jeda</button>
+        <button id="btnReset" disabled>Atur ulang</button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+/* =====================================================
+   1. DATA RESEP
+   ratio = cup air per 1 cup beras, minutes = durasi dasar
+   (nilai bisa kamu ubah sesuai hasil percobaan sendiri)
+   ===================================================== */
+const CUP_ML = 180; // 1 cup takar beras Indonesia ≈ 180 ml
+
+const RECIPES = {
+  cooker:   { name: "Rice cooker",  white: { ratio: 1.2, minutes: 35 }, brown: { ratio: 1.5, minutes: 55 } },
+  electric: { name: "Panci listrik", white: { ratio: 1.1, minutes: 25 }, brown: { ratio: 1.4, minutes: 45 } },
+  stove:    { name: "Panci kompor", white: { ratio: 1.5, minutes: 25 }, brown: { ratio: 2.0, minutes: 50 } }
+};
+
+// Langkah-langkah per cara memasak. {air} diganti dengan hasil hitungan.
+const STEPS = {
+  cooker: [
+    "Cuci beras 2–3 kali sampai air cucian agak jernih.",
+    "Masukkan beras dan {air} ml air ke panci rice cooker.",
+    "Tutup, tekan tombol Cook, dan jangan buka tutup.",
+    "Setelah mati, biarkan 10 menit lalu aduk dengan sendok nasi."
+  ],
+  electric: [
+    "Cuci beras 2–3 kali, lalu tiriskan.",
+    "Masukkan beras dan {air} ml air, lalu ratakan permukaannya.",
+    "Tutup rapat dan nyalakan panci listrik.",
+    "Setelah selesai, diamkan sebentar sebelum tutup dibuka."
+  ],
+  stove: [
+    "Cuci beras 2–3 kali, lalu tiriskan.",
+    "Masukkan beras dan {air} ml air, didihkan dengan api besar.",
+    "Setelah mendidih, kecilkan api, tutup rapat, dan jangan diaduk.",
+    "Matikan api, diamkan tertutup 10 menit, lalu aduk pelan."
+  ]
+};
+
+/* =====================================================
+   2. FUNGSI HITUNG (murni: input -> output, mudah diuji)
+   ===================================================== */
+function calculate(method, rice, cups) {
+  const r = RECIPES[method][rice];
+  const waterMl = Math.round(cups * r.ratio * CUP_ML);
+  // Tiap tambahan 1 cup di atas 2 cup menambah ±1,5 menit
+  const extra = Math.max(0, cups - 2) * 1.5;
+  const minutes = Math.round(r.minutes + extra);
+  return { ratio: r.ratio, waterMl, minutes, steps: STEPS[method].map(s => s.replace("{air}", waterMl)) };
+}
+
+// Validasi: harus angka dan lebih dari 0 (batas atas 20 agar masuk akal)
+function validate(value) {
+  if (value.trim() === "" || isNaN(value)) return "Masukkan angka yang valid.";
+  if (Number(value) <= 0) return "Jumlah beras harus lebih dari 0.";
+  if (Number(value) > 20) return "Maksimal 20 cup.";
+  return "";
+}
+
+/* =====================================================
+   3. TAMPILAN HASIL
+   ===================================================== */
+const $ = id => document.getElementById(id);
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const error = validate($("amount").value);
+  $("err").textContent = error;
+  if (error) return;
+
+  const method = document.querySelector('input[name="method"]:checked').value;
+  const rice = document.querySelector('input[name="rice"]:checked').value;
+  const cups = Number($("amount").value);
+  const res = calculate(method, rice, cups);
+
+  $("result").innerHTML = `
+    <div class="stats">
+      <div class="stat"><b>${res.waterMl} ml</b><span>Air (rasio 1 : ${res.ratio})</span></div>
+      <div class="stat"><b>${res.minutes} menit</b><span>Lama memasak</span></div>
+    </div>
+    <ol class="steps">${res.steps.map(s => `<li>${s}</li>`).join("")}</ol>`;
+
+  setTimer(res.minutes * 60);
+});
+
+/* =====================================================
+   4. TIMER
+   Memakai waktu akhir (endTime) agar tetap akurat
+   walaupun tab browser sedang di latar belakang.
+   ===================================================== */
+const RING_LEN = 2 * Math.PI * 52; // keliling lingkaran SVG (r = 52)
+$("bar").style.strokeDasharray = RING_LEN;
+
+let totalSec = 0, remainingMs = 0, endTime = 0, tick = null, audioCtx = null;
+
+function format(sec) {
+  const m = String(Math.floor(sec / 60)).padStart(2, "0");
+  const s = String(sec % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function draw() {
+  const sec = Math.ceil(remainingMs / 1000);
+  $("time").textContent = format(sec);
+  const progress = totalSec ? remainingMs / (totalSec * 1000) : 0;
+  $("bar").style.strokeDashoffset = RING_LEN * (1 - progress);
+  document.title = tick ? `${format(sec)} · Nasi Pintar` : "Kalkulator & Timer Nasi Pintar";
+}
+
+function setButtons(running) {
+  $("btnStart").disabled = running || remainingMs <= 0;
+  $("btnPause").disabled = !running;
+  $("btnReset").disabled = totalSec === 0;
+}
+
+function setTimer(seconds) {
+  stop();
+  totalSec = seconds;
+  remainingMs = seconds * 1000;
+  $("ring").classList.remove("done");
+  $("status").textContent = "Siap. Tekan Mulai saat nasi mulai dimasak.";
+  draw(); setButtons(false);
+}
+
+function start() {
+  // AudioContext harus dibuat setelah klik pengguna (aturan browser)
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+
+  endTime = Date.now() + remainingMs;
+  tick = setInterval(() => {
+    remainingMs = Math.max(0, endTime - Date.now());
+    draw();
+    if (remainingMs === 0) finish();
+  }, 250);
+  $("status").textContent = "Sedang memasak…";
+  setButtons(true);
+}
+
+function stop() { clearInterval(tick); tick = null; }
+
+function pause() {
+  remainingMs = Math.max(0, endTime - Date.now());
+  stop(); draw();
+  $("status").textContent = "Dijeda.";
+  setButtons(false);
+}
+
+function reset() { setTimer(totalSec); }
+
+function finish() {
+  stop(); draw();
+  $("ring").classList.add("done");
+  $("status").textContent = "Nasi sudah matang! Diamkan sebentar sebelum disajikan.";
+  setButtons(false);
+  beep(3);
+}
+
+/* =====================================================
+   5. SUARA ALARM (Web Audio API)
+   Oscillator = pembuat nada, Gain = pengatur volume.
+   ===================================================== */
+function beep(times) {
+  for (let i = 0; i < times; i++) {
+    const t = audioCtx.currentTime + i * 0.5;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.4, t + 0.02); // naik halus
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35); // turun halus
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  }
+}
+
+$("btnStart").addEventListener("click", start);
+$("btnPause").addEventListener("click", pause);
+$("btnReset").addEventListener("click", reset);
+</script>
+</body>
+</html>
